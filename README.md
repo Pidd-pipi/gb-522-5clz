@@ -30,7 +30,7 @@ docker compose down -v --remove-orphans
 
 - 线路档案：校验线路长度和折射率，查看历史轨迹，由 reviewer/admin 设置基线。
 - 轨迹分析：导入离线采样，记录去噪窗口、检测阈值和合并窗口，缩放真实 API 曲线。
-- 事件复核：按线路、类型和复核状态筛选，保留算法原值并单独保存人工修订。
+- 事件复核：按线路、类型、复核状态和“待复核（失去算法依据）”筛选，保留算法原值并单独保存人工修订；调整检测参数重跑时安全合并，不清空已复核判定。
 - 定位案例：执行基线差异比较，按 `draft -> analyzing -> pending_review -> confirmed -> closed` 流转。
 - 不可变审计：记录轨迹导入、基线变更、算法参数、事件修订、案例确认和关闭，携带 request ID 与前后值摘要。
 
@@ -81,8 +81,8 @@ frontend/src/pages                 五个业务页与登录页
 | `GET` | `/api/v1/traces` | 轨迹列表 |
 | `POST` | `/api/v1/traces/import` | 导入采样点 |
 | `GET` | `/api/v1/traces/:id` | 轨迹、处理点和事件 |
-| `POST` | `/api/v1/traces/:id/detect` | 执行事件检测 |
-| `GET` | `/api/v1/events` | 事件筛选 |
+| `POST` | `/api/v1/traces/:id/detect` | 执行事件检测（安全合并，返回 `created_count`/`matched_reviewed_count`/`pending_re_review_count`） |
+| `GET` | `/api/v1/events` | 事件筛选（支持 `reviewed`、`pending_re_review`） |
 | `PATCH` | `/api/v1/events/:id/review` | 人工复核 |
 | `GET/POST` | `/api/v1/cases` | 案例列表/新建 |
 | `GET` | `/api/v1/cases/:id` | 案例与差异 |
@@ -114,6 +114,7 @@ frontend/src/pages                 五个业务页与登录页
 3. 事件检测：一阶差分绝对值超过阈值的点为峰值，连续峰按窗口合并为幅度最大的一点。
 4. 距离公式：`distance = c * sample_index * sample_interval_ns * 1e-9 / (2 * refractive_index)`，其中 `c = 299792458 m/s`。超过线路长度的候选事件被拒绝。
 5. 基线比对：在距离容差内一对一最近匹配，输出新增、消失和损耗增大三类差异与置信度。
+6. 重跑安全合并：再次执行检测时，未复核事件按新参数整体重建；已复核事件按原算法距离（`algorithm_distance_m`）在容差 `单采样距离 × max(新旧合并窗口)` 内与新事件一对一最近匹配，命中则保留人工类型、距离、备注与复核信息，并把算法列同步为本次检测原值；新参数下不再命中的事件继续保留在列表中，置 `pending_re_review` 待复核标记，表示其已失去算法依据。事件、处理曲线与审计在同一事务内更新，整批失败时全部回滚。
 
 状态迁移使用条件更新和 `version` 乐观锁。分析失败回到 `draft` 并保存错误；只有 reviewer/admin 能确认；关闭后不可修改。登录、轨迹导入和分析使用本地内存限流。访问日志不记录 JWT、密码、请求体或完整采样数组。
 

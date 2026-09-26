@@ -65,25 +65,89 @@ func (s *EventService) Detect(traceID uint, request dto.DetectEventsRequest, act
 	if err != nil {
 		return dto.DetectionSummary{}, &AppError{CodeAlgorithmInput, 422, "event detection failed", err}
 	}
-	events := make([]model.EventMarker, 0, len(detected))
-	for _, item := range detected {
-		events = append(events, model.EventMarker{TraceID: trace.ID, DistanceM: item.DistanceM, EventType: item.Type, InsertionLossDB: item.InsertionLossDB, ReflectanceDB: item.ReflectanceDB, Confidence: item.Confidence, AlgorithmEventType: item.Type, AlgorithmDistanceM: item.DistanceM, AlgorithmInsertionLossDB: item.InsertionLossDB})
+	mergeBase := merge
+	if trace.MergeWindow > mergeBase {
+		mergeBase = trace.MergeWindow
+	}
+	tolerance, err := algorithm.DistanceUncertainty(trace.SampleIntervalNS, route.RefractiveIndex, mergeBase)
+	if err != nil {
+		return dto.DetectionSummary{}, &AppError{CodeAlgorithmInput, 422, "match tolerance derivation failed", err}
 	}
 	processed, _ := json.Marshal(filtered)
+	summary := dto.DetectionSummary{TraceID: trace.ID, DetectedCount: len(detected), MatchToleranceM: tolerance, NoiseFloorDB: noise, ThresholdDB: threshold, RejectedCount: rejected}
 	err = s.store.Transaction(func(tx *repository.Store) error {
+		existing, err := tx.Events.ForTrace(trace.ID)
+		if err != nil {
+			return err
+		}
+		reviewed := make([]model.EventMarker, 0)
+		for _, event := range existing {
+			if event.Reviewed {
+				reviewed = append(reviewed, event)
+			}
+		}
+		previous := make([]float64, len(reviewed))
+		for i, event := range reviewed {
+			previous[i] = event.AlgorithmDistanceM
+		}
+		current := make([]float64, len(detected))
+		for i, item := range detected {
+			current[i] = item.DistanceM
+		}
+		matches, err := algorithm.MatchByDistance(previous, current, tolerance)
+		if err != nil {
+			return err
+		}
+		consumed := make(map[int]bool, len(detected))
+		stale := make([]uint, 0)
+		for i, event := range reviewed {
+			match := matches[i]
+			if match < 0 {
+				stale = append(stale, event.ID)
+				continue
+			}
+			item := detected[match]
+			event.AlgorithmEventType = item.Type
+			event.AlgorithmDistanceM = item.DistanceM
+			event.AlgorithmInsertionLossDB = item.InsertionLossDB
+			event.InsertionLossDB = item.InsertionLossDB
+			event.ReflectanceDB = item.ReflectanceDB
+			event.Confidence = item.Confidence
+			event.PendingReReview = false
+			if err := tx.Events.SyncAlgorithmValues(&event); err != nil {
+				return err
+			}
+			consumed[match] = true
+			summary.MatchedReviewedCount++
+		}
+		if err := tx.Events.MarkPendingReReview(stale); err != nil {
+			return err
+		}
+		summary.PendingReReviewCount = len(stale)
+		if err := tx.Events.DeleteUnreviewedForTrace(trace.ID); err != nil {
+			return err
+		}
+		fresh := make([]model.EventMarker, 0, len(detected)-len(consumed))
+		for i, item := range detected {
+			if consumed[i] {
+				continue
+			}
+			fresh = append(fresh, model.EventMarker{TraceID: trace.ID, DistanceM: item.DistanceM, EventType: item.Type, InsertionLossDB: item.InsertionLossDB, ReflectanceDB: item.ReflectanceDB, Confidence: item.Confidence, AlgorithmEventType: item.Type, AlgorithmDistanceM: item.DistanceM, AlgorithmInsertionLossDB: item.InsertionLossDB})
+		}
+		if err := tx.Events.CreateBatch(fresh); err != nil {
+			return err
+		}
+		summary.CreatedCount = len(fresh)
 		if err := tx.Traces.UpdateProcessing(trace.ID, datatypes.JSON(processed), noise, window, threshold, merge); err != nil {
 			return err
 		}
-		if err := tx.Events.ReplaceForTrace(trace.ID, events); err != nil {
-			return err
-		}
-		params := map[string]any{"denoise_window": window, "peak_threshold_db": threshold, "merge_window": merge, "noise_floor_db": noise, "detected": len(events), "rejected_out_of_bounds": rejected}
+		params := map[string]any{"denoise_window": window, "peak_threshold_db": threshold, "merge_window": merge, "noise_floor_db": noise, "detected": len(detected), "created": len(fresh), "matched_reviewed": summary.MatchedReviewedCount, "pending_re_review": len(stale), "match_tolerance_m": tolerance, "rejected_out_of_bounds": rejected}
 		return tx.Audits.Create(audit(actor, "trace.events_detected", "TraceCapture", trace.ID, &route.ID, "{}", snapshot(params)))
 	})
 	if err != nil {
 		return dto.DetectionSummary{}, internal("save detected events failed", err)
 	}
-	return dto.DetectionSummary{TraceID: trace.ID, DetectedCount: len(events), NoiseFloorDB: noise, ThresholdDB: threshold, RejectedCount: rejected}, nil
+	return summary, nil
 }
 
 func (s *EventService) List(query dto.EventQuery) ([]model.EventMarker, dto.Pagination, error) {

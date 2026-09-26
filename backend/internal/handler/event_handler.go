@@ -27,6 +27,11 @@ func (h *EventHandler) List(c *gin.Context) {
 			query.Reviewed = &value
 		}
 	}
+	if raw := c.Query("pending_re_review"); raw != "" {
+		if value, err := strconv.ParseBool(raw); err == nil {
+			query.PendingReReview = &value
+		}
+	}
 	items, pagination, err := h.service.List(query)
 	if err != nil {
 		fail(c, err)

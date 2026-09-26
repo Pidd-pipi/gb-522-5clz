@@ -21,6 +21,7 @@ function submit() {
     <el-alert v-if="mode === 'event' && event" type="info" :closable="false" show-icon>
       <template #title>算法原值：{{ eventLabel[event.algorithm_event_type] }} · {{ event.algorithm_distance_m.toFixed(2) }} m</template>
     </el-alert>
+    <el-alert v-if="mode === 'event' && event?.pending_re_review" type="warning" :closable="false" show-icon title="该事件在最新检测参数下不再命中，已失去算法依据；请对照曲线重新确认后提交。" />
     <el-alert v-if="mode === 'case'" type="warning" :closable="false" show-icon title="确认后结论将进入不可直接编辑的已确认状态。" />
     <el-form label-position="top" class="review-form">
       <template v-if="mode === 'event'">

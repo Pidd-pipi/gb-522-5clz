@@ -15,7 +15,7 @@ export const traceApi = {
   list: (params?: object) => api.get<ApiEnvelope<TraceCapture[]>>('/traces', { params }),
   detail: (id: number) => api.get<ApiEnvelope<TraceEnvelope>>(`/traces/${id}`),
   import: (body: object) => api.post<ApiEnvelope<TraceCapture>>('/traces/import', body),
-  detect: (id: number, body: object) => api.post<ApiEnvelope<{ trace_id: number; detected_count: number; noise_floor_db: number; threshold_db: number; rejected_out_of_bounds: number }>>(`/traces/${id}/detect`, body),
+  detect: (id: number, body: object) => api.post<ApiEnvelope<{ trace_id: number; detected_count: number; created_count: number; matched_reviewed_count: number; pending_re_review_count: number; match_tolerance_m: number; noise_floor_db: number; threshold_db: number; rejected_out_of_bounds: number }>>(`/traces/${id}/detect`, body),
 }
 export const eventApi = {
   list: (params?: object) => api.get<ApiEnvelope<EventMarker[]>>('/events', { params }),
