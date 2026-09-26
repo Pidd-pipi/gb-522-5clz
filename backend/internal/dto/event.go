@@ -9,18 +9,21 @@ type ReviewEventRequest struct {
 }
 
 type EventQuery struct {
-	TraceID  *uint
-	RouteID  *uint
-	Type     constants.EventType
-	Reviewed *bool
-	Page     int
-	PageSize int
+	TraceID         *uint
+	RouteID         *uint
+	Type            constants.EventType
+	Reviewed        *bool
+	AlgorithmBacked *bool
+	Page            int
+	PageSize        int
 }
 
 type DetectionSummary struct {
-	TraceID       uint    `json:"trace_id"`
-	DetectedCount int     `json:"detected_count"`
-	NoiseFloorDB  float64 `json:"noise_floor_db"`
-	ThresholdDB   float64 `json:"threshold_db"`
-	RejectedCount int     `json:"rejected_out_of_bounds"`
+	TraceID               uint    `json:"trace_id"`
+	DetectedCount         int     `json:"detected_count"`
+	NoiseFloorDB          float64 `json:"noise_floor_db"`
+	ThresholdDB           float64 `json:"threshold_db"`
+	RejectedCount         int     `json:"rejected_out_of_bounds"`
+	SyncedReviewedCount   int     `json:"synced_reviewed_count"`
+	OrphanedReviewedCount int     `json:"orphaned_reviewed_count"`
 }

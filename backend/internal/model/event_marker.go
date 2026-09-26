@@ -18,6 +18,7 @@ type EventMarker struct {
 	AlgorithmDistanceM       float64             `gorm:"not null" json:"algorithm_distance_m"`
 	AlgorithmInsertionLossDB float64             `gorm:"not null" json:"algorithm_insertion_loss_db"`
 	Reviewed                 bool                `gorm:"not null;default:false;index" json:"reviewed"`
+	AlgorithmBacked          bool                `gorm:"not null;default:true;index" json:"algorithm_backed"`
 	ReviewNote               string              `gorm:"size:1000" json:"review_note"`
 	ReviewedBy               *uint               `json:"reviewed_by"`
 	ReviewedAt               *time.Time          `json:"reviewed_at"`

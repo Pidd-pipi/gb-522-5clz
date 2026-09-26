@@ -11,15 +11,34 @@ import (
 
 type EventRepository struct{ db *gorm.DB }
 
-func (r *EventRepository) ReplaceForTrace(traceID uint, events []model.EventMarker) error {
-	if err := r.db.Where("trace_id = ? AND reviewed = ?", traceID, false).Delete(&model.EventMarker{}).Error; err != nil {
-		return fmt.Errorf("clear unreviewed events: %w", err)
+// DeleteAlgorithmOnly 只清除没有人工判定的事件（未复核且仍有算法依据），
+// 已复核或已失去算法依据的事件必须保留，由安全合并决定去向。
+func (r *EventRepository) DeleteAlgorithmOnly(traceID uint) error {
+	if err := r.db.Where("trace_id = ? AND reviewed = ? AND algorithm_backed = ?", traceID, false, true).Delete(&model.EventMarker{}).Error; err != nil {
+		return fmt.Errorf("clear algorithm-only events: %w", err)
 	}
+	return nil
+}
+
+func (r *EventRepository) CreateBatch(events []model.EventMarker) error {
 	if len(events) == 0 {
 		return nil
 	}
 	if err := r.db.Create(&events).Error; err != nil {
 		return fmt.Errorf("create detected events: %w", err)
+	}
+	return nil
+}
+
+// ApplyMerge 回写安全合并后保留的事件：只更新算法原值、算法输出与复核状态，
+// 人工修订的距离、类型和备注不在合并中被覆盖。
+func (r *EventRepository) ApplyMerge(event *model.EventMarker) error {
+	result := r.db.Model(&model.EventMarker{}).Where("id = ?", event.ID).Updates(map[string]any{"algorithm_event_type": event.AlgorithmEventType, "algorithm_distance_m": event.AlgorithmDistanceM, "algorithm_insertion_loss_db": event.AlgorithmInsertionLossDB, "insertion_loss_db": event.InsertionLossDB, "reflectance_db": event.ReflectanceDB, "confidence": event.Confidence, "reviewed": event.Reviewed, "algorithm_backed": event.AlgorithmBacked})
+	if result.Error != nil {
+		return fmt.Errorf("apply event merge: %w", result.Error)
+	}
+	if result.RowsAffected == 0 {
+		return ErrNotFound
 	}
 	return nil
 }
@@ -48,6 +67,9 @@ func (r *EventRepository) List(query dto.EventQuery) ([]model.EventMarker, int64
 	}
 	if query.Reviewed != nil {
 		db = db.Where("reviewed = ?", *query.Reviewed)
+	}
+	if query.AlgorithmBacked != nil {
+		db = db.Where("algorithm_backed = ?", *query.AlgorithmBacked)
 	}
 	var total int64
 	if err := db.Count(&total).Error; err != nil {

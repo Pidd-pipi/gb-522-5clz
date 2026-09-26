@@ -27,6 +27,11 @@ func (h *EventHandler) List(c *gin.Context) {
 			query.Reviewed = &value
 		}
 	}
+	if raw := c.Query("algorithm_backed"); raw != "" {
+		if value, err := strconv.ParseBool(raw); err == nil {
+			query.AlgorithmBacked = &value
+		}
+	}
 	items, pagination, err := h.service.List(query)
 	if err != nil {
 		fail(c, err)

@@ -13,6 +13,7 @@ export interface EventMarker {
   algorithm_distance_m: number
   algorithm_insertion_loss_db: number
   reviewed: boolean
+  algorithm_backed: boolean
   review_note: string
   reviewed_by?: number
   reviewed_at?: string

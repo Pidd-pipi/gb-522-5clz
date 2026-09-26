@@ -21,6 +21,7 @@ function submit() {
     <el-alert v-if="mode === 'event' && event" type="info" :closable="false" show-icon>
       <template #title>算法原值：{{ eventLabel[event.algorithm_event_type] }} · {{ event.algorithm_distance_m.toFixed(2) }} m</template>
     </el-alert>
+    <el-alert v-if="mode === 'event' && event && !event.algorithm_backed" type="warning" :closable="false" show-icon title="该事件在当前检测参数下已失去算法依据；复核结论会被保留，重跑检测重新命中后自动恢复依据。" class="orphan-alert" />
     <el-alert v-if="mode === 'case'" type="warning" :closable="false" show-icon title="确认后结论将进入不可直接编辑的已确认状态。" />
     <el-form label-position="top" class="review-form">
       <template v-if="mode === 'event'">
@@ -39,6 +40,7 @@ function submit() {
 
 <style scoped>
 .review-form { margin-top: 20px; }
+.orphan-alert { margin-top: 10px; }
 .two-columns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
 @media (max-width: 520px) { .two-columns { grid-template-columns: 1fr; gap: 0; } }
 </style>
